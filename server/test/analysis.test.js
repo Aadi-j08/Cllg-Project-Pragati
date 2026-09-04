@@ -25,115 +25,9 @@ const {
   describePosture,
 } = require("../lib/scoring");
 
-// ---------------------------------------------------------------------------
-// Synthetic athlete
-// ---------------------------------------------------------------------------
-
-const THIGH = 90;
-const SHANK = 90;
-const TORSO = 120;
-const HIP_HALF_WIDTH = 30;
-
-/** Point at `length` from origin, `angle` degrees away from straight down. */
-function limbEnd(origin, angleDeg, length) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return {
-    x: origin.x + length * Math.sin(rad),
-    y: origin.y + length * Math.cos(rad),
-  };
-}
-
-/**
- * Build one frame of a runner.
- *
- * @param {number} t          seconds
- * @param {object} opts
- *   leanDeg      torso lean from vertical, positive = forward (+x)
- *   strideHz     full stride cycles per second (one cycle = two steps)
- *   minKnee      most-bent knee angle reached during the cycle
- *   speed        horizontal pixels per second
- *   confidence   keypoint score to stamp on every landmark
- */
-function makeFrame(t, opts) {
-  const {
-    leanDeg = 10,
-    strideHz = 2.1,
-    minKnee = 100,
-    speed = 260,
-    confidence = 0.85,
-    bounce = 8,
-  } = opts || {};
-
-  const phase = 2 * Math.PI * strideHz * t;
-
-  const hipCentre = {
-    x: 120 + speed * t,
-    y: 300 + bounce * Math.sin(2 * phase),
-  };
-
-  const leftHip = { x: hipCentre.x - HIP_HALF_WIDTH, y: hipCentre.y };
-  const rightHip = { x: hipCentre.x + HIP_HALF_WIDTH, y: hipCentre.y };
-
-  // Shoulders sit a torso above the hips, tilted by the lean angle.
-  const shoulderCentre = {
-    x: hipCentre.x + TORSO * Math.sin((leanDeg * Math.PI) / 180),
-    y: hipCentre.y - TORSO * Math.cos((leanDeg * Math.PI) / 180),
-  };
-  const leftShoulder = { x: shoulderCentre.x - 40, y: shoulderCentre.y };
-  const rightShoulder = { x: shoulderCentre.x + 40, y: shoulderCentre.y };
-
-  // Each leg swings a half cycle out of phase with the other.
-  function leg(hip, legPhase) {
-    const thighAngle = 28 * Math.sin(legPhase);
-    // Knee angle sweeps between minKnee (bent) and 172 (near straight).
-    const flexion = Math.max(0, Math.sin(legPhase));
-    const kneeAngle = 172 - (172 - minKnee) * flexion;
-    const shankAngle = thighAngle + (180 - kneeAngle);
-
-    const knee = limbEnd(hip, thighAngle, THIGH);
-    const ankle = limbEnd(knee, shankAngle, SHANK);
-    return { knee, ankle };
-  }
-
-  const left = leg(leftHip, phase);
-  const right = leg(rightHip, phase + Math.PI);
-
-  const points = {
-    nose: { x: shoulderCentre.x, y: shoulderCentre.y - 45 },
-    left_eye: { x: shoulderCentre.x - 8, y: shoulderCentre.y - 50 },
-    right_eye: { x: shoulderCentre.x + 8, y: shoulderCentre.y - 50 },
-    left_ear: { x: shoulderCentre.x - 16, y: shoulderCentre.y - 46 },
-    right_ear: { x: shoulderCentre.x + 16, y: shoulderCentre.y - 46 },
-    left_shoulder: leftShoulder,
-    right_shoulder: rightShoulder,
-    left_elbow: { x: leftShoulder.x - 10, y: leftShoulder.y + 55 },
-    right_elbow: { x: rightShoulder.x + 10, y: rightShoulder.y + 55 },
-    left_wrist: { x: leftShoulder.x - 4, y: leftShoulder.y + 100 },
-    right_wrist: { x: rightShoulder.x + 4, y: rightShoulder.y + 100 },
-    left_hip: leftHip,
-    right_hip: rightHip,
-    left_knee: left.knee,
-    right_knee: right.knee,
-    left_ankle: left.ankle,
-    right_ankle: right.ankle,
-  };
-
-  return {
-    keypoints: Object.entries(points).map(([name, p]) => ({
-      name,
-      x: p.x,
-      y: p.y,
-      score: confidence,
-    })),
-  };
-}
-
-function makeClip(seconds, fps, opts) {
-  const frames = [];
-  const total = Math.round(seconds * fps);
-  for (let i = 0; i < total; i++) frames.push(makeFrame(i / fps, opts));
-  return frames;
-}
+// The synthetic runner lives in lib/synthetic.js so the demo seeder can use
+// the same geometry these tests assert against.
+const { makeFrame, makeClip } = require("../lib/synthetic");
 
 // ---------------------------------------------------------------------------
 // Geometry primitives
@@ -358,6 +252,22 @@ test("unsupported sports are refused, not faked", () => {
 test("Sprint-100m is accepted through the public entry point", () => {
   const report = analysePose("Sprint-100m", makeClip(2.5, 24, {}), 24);
   assert.ok(typeof report.score === "number");
+});
+
+test("uneven legs are detected and coached", () => {
+  const fps = 24;
+  const even = scoreSprint(makeClip(2.5, fps, { asymmetry: 0 }), fps);
+  const uneven = scoreSprint(makeClip(2.5, fps, { asymmetry: 30 }), fps);
+
+  assert.ok(
+    uneven.measurements.kneeAsymmetryDeg > even.measurements.kneeAsymmetryDeg,
+    "a leg moving through a smaller range should measure as asymmetric"
+  );
+  assert.ok(uneven.breakdown.symmetry.score < even.breakdown.symmetry.score);
+  assert.ok(
+    uneven.recommendations.some((r) => /left and right|symmet|single-leg/i.test(r)),
+    "should recommend evening the legs out"
+  );
 });
 
 // ---------------------------------------------------------------------------

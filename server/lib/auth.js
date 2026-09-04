@@ -7,9 +7,10 @@
 //   FIREBASE_SERVICE_ACCOUNT       the service account JSON, inline
 //   GOOGLE_APPLICATION_CREDENTIALS a path to the service account JSON file
 //
-// For local demos without a Firebase project, set ALLOW_UNAUTHENTICATED=true.
-// That path is deliberately loud: it logs a warning on every start, and it will
-// refuse to run when NODE_ENV is "production".
+// With neither set, the server starts in demo mode: authentication is skipped
+// and every request is the same demo user. That path is deliberately loud — it
+// prints a banner on every start — and it is refused outright when NODE_ENV is
+// "production", so the convenience can never reach a deployment.
 
 const admin = require("firebase-admin");
 
@@ -48,23 +49,25 @@ function init() {
     return;
   }
 
-  if (process.env.ALLOW_UNAUTHENTICATED === "true") {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "ALLOW_UNAUTHENTICATED cannot be used in production. Configure Firebase credentials."
-      );
-    }
-    authDisabled = true;
-    console.warn(
-      "\n[auth] WARNING: running with authentication DISABLED (ALLOW_UNAUTHENTICATED=true).\n" +
-        "[auth] Every request will be treated as the same demo user. Local use only.\n"
+  // Production must never run without real credentials, whatever the flags say.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "No Firebase credentials found. Set FIREBASE_SERVICE_ACCOUNT or " +
+        "GOOGLE_APPLICATION_CREDENTIALS before running in production."
     );
-    return;
   }
 
-  throw new Error(
-    "No Firebase credentials found. Set FIREBASE_SERVICE_ACCOUNT or " +
-      "GOOGLE_APPLICATION_CREDENTIALS, or set ALLOW_UNAUTHENTICATED=true for a local demo."
+  // Outside production, an unconfigured checkout runs in demo mode rather than
+  // refusing to start — someone evaluating the project should be able to clone
+  // it and see it work. The warning makes the trade-off impossible to miss.
+  authDisabled = true;
+  console.warn(
+    "\n[auth] ---------------------------------------------------------------\n" +
+      "[auth] Running in DEMO MODE: authentication is disabled.\n" +
+      "[auth] Every request is treated as the same demo user.\n" +
+      "[auth] Set FIREBASE_SERVICE_ACCOUNT or GOOGLE_APPLICATION_CREDENTIALS\n" +
+      "[auth] in server/.env to require real sign-in.\n" +
+      "[auth] ---------------------------------------------------------------\n"
   );
 }
 

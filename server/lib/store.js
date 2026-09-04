@@ -69,4 +69,12 @@ function addReport(uid, record) {
   return stored;
 }
 
-module.exports = { listReports, addReport, DB_FILE };
+/** Replace a user's whole list. Used by the demo seeder to remove its samples. */
+function replaceReports(uid, records) {
+  const db = readAll();
+  db[uid] = records.slice(0, MAX_PER_USER);
+  writeAll(db);
+  return db[uid];
+}
+
+module.exports = { listReports, addReport, replaceReports, DB_FILE };
