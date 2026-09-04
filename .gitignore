@@ -1,0 +1,25 @@
+node_modules/
+.next/
+out/
+build/
+
+# env
+.env
+.env.local
+.env*.local
+
+# secrets - do NOT commit
+serviceAccountKey.json
+*serviceAccount*.json
+
+.DS_Store
+*.pem
+npm-debug.log*
+.vercel
+next-env.d.ts
+
+# server
+server/node_modules/
+server/data/
+server/.env
+tsconfig.tsbuildinfo
