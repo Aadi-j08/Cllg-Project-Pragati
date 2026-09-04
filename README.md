@@ -34,34 +34,53 @@ refused by the API rather than given invented numbers.
 
 ## Running it
 
-Two processes: the Next.js site and the analysis API.
+Needs Node 18+. **No configuration required** — clone it and both halves run.
 
-### 1. The analysis API
+Two processes: the analysis API and the site.
 
 ```bash
+# 1. the analysis API
 cd server
 npm install
-cp .env.example .env      # then edit it
-npm start
-```
+npm run seed:demo     # optional: sample sessions so the dashboard is not empty
+npm start             # http://localhost:3001
 
-Listens on `http://localhost:3001`.
-
-Authentication is on by default and needs Firebase Admin credentials — set
-`FIREBASE_SERVICE_ACCOUNT` (the JSON inline) or `GOOGLE_APPLICATION_CREDENTIALS`
-(a path to it) in `server/.env`. For a local demo without a Firebase project, set
-`ALLOW_UNAUTHENTICATED=true`; it prints a warning on every start and refuses to
-run when `NODE_ENV=production`.
-
-### 2. The site
-
-```bash
+# 2. the site, in a second terminal
+cd ..
 npm install
-npm run dev
+npm run dev           # http://localhost:3000
 ```
 
-Runs on `http://localhost:3000`. Copy the Firebase web config into `.env.local`
-to enable sign-in.
+With no `.env` present the API starts in **demo mode**: authentication is
+skipped, every request is the same demo user, and it prints a banner saying so.
+It refuses to start that way when `NODE_ENV=production`.
+
+### Turning the real features on
+
+Copy `.env.example` to `.env.local` (site) and `server/.env.example` to
+`server/.env` (API), then fill in what you need:
+
+| To enable | Set |
+|---|---|
+| Sign in / sign up | the `NEXT_PUBLIC_FIREBASE_*` values in `.env.local` |
+| Real auth on the API | `FIREBASE_SERVICE_ACCOUNT` or `GOOGLE_APPLICATION_CREDENTIALS` in `server/.env` |
+| The site chatbot | `N8N_WEBHOOK_URL` in `.env.local` |
+
+Without them the site still builds and runs; sign-in and the chatbot report a
+clear error rather than breaking the page.
+
+### Seeing the analysis without filming a sprint
+
+`npm run seed:demo` in `server/` writes five sample sessions showing an athlete
+improving over six weeks. They are scored by the **real pipeline** — the same
+code an upload hits, fed the synthetic runner from `lib/synthetic.js` instead of
+pose estimation on a video — so the numbers are genuine scorer output, not
+hand-written fixtures. The dashboard labels them as samples.
+Remove them with `npm run seed:demo -- --clear`.
+
+To analyse an actual video, film side-on for about five seconds and upload it at
+`/upload`. The first analysis downloads the MoveNet model, so it needs an
+internet connection and takes longer than later ones.
 
 ---
 
@@ -78,7 +97,7 @@ components/ui/       the 11 UI primitives this project actually uses
 hero-section.tsx     landing hero with the photo crossfade
 lib/
   api.ts             the only place that knows the API's address
-  firebase.ts        Firebase client init
+  firebase.js        Firebase client init, tolerant of missing config
   report-pdf.ts      report → PDF, jsPDF loaded on demand
 server/
   index.js           Express app
@@ -88,7 +107,9 @@ server/
   lib/frames.js      ffmpeg frame sampling
   lib/auth.js        Firebase ID token verification
   lib/store.js       report persistence
-  test/              22 tests over the scoring maths
+  lib/synthetic.js   a runner built from known geometry, for tests and the seeder
+  scripts/seed-demo  sample sessions for a fresh checkout
+  test/              23 tests over the scoring maths
 ```
 
 ## API
@@ -100,7 +121,8 @@ server/
 | `POST /reports` | store a report |
 | `GET /health` | what the API supports; the UI reads this so it can never offer a sport the backend would reject |
 
-Every route except `/health` requires a Firebase ID token.
+Every route except `/health` requires a Firebase ID token — unless the API is
+running in demo mode, where the check is skipped and announced at startup.
 
 ## Tests
 
@@ -108,7 +130,8 @@ Every route except `/health` requires a Firebase ID token.
 cd server && npm test
 ```
 
-The scoring maths is tested against a synthetic runner built from known geometry —
+The scoring maths is tested against a synthetic runner built from known geometry
+(`lib/synthetic.js`) —
 a figure generated at a 12° lean measures 12°, a 100° knee flexion measures 100°,
 a 2 Hz stride produces four steps per second. That means the tests check real
 values rather than just "it returned something", and they run without needing a
